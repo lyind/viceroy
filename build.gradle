@@ -39,8 +39,8 @@ shadowJar {
 }
 
 dependencies {
-    annotationProcessor "org.projectlombok:lombok:1.16.22"
-    compileOnly "org.projectlombok:lombok:1.16.22"
+    annotationProcessor "org.projectlombok:lombok:1.18.2"
+    compileOnly "org.projectlombok:lombok:1.18.2"
 
     compile 'net.talpidae:base:2'  // or modules/base
     testCompile group: 'junit', name: 'junit', version: '4.12'
