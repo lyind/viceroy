@@ -3,8 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/viceroy.iml" filepath="$PROJECT_DIR$/.idea/modules/viceroy.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/viceroy_main.iml" filepath="$PROJECT_DIR$/.idea/modules/viceroy_main.iml" group="viceroy" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/viceroy_test.iml" filepath="$PROJECT_DIR$/.idea/modules/viceroy_test.iml" group="viceroy" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/viceroy.main.iml" filepath="$PROJECT_DIR$/.idea/modules/viceroy.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/viceroy.test.iml" filepath="$PROJECT_DIR$/.idea/modules/viceroy.test.iml" />
     </modules>
   </component>
 </project>
