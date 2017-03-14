@@ -1,0 +1,9 @@
+rootProject.name = 'viceroy'
+
+// module projects (delete their local directories to pull from binary dao instead)
+file('modules').listFiles().each { File moduleBuild ->
+    if (moduleBuild.isDirectory())
+    {
+        includeBuild moduleBuild
+    }
+}

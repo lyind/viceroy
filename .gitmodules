@@ -1,0 +1,3 @@
+[submodule "modules/base"]
+	path = modules/base
+	url = https://github.com/lyind/base.git

@@ -1,0 +1,40 @@
+plugins {
+    id 'application'
+    id 'idea'
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '1.2.4'
+}
+
+group 'net.talpidae'
+version '1'
+
+defaultTasks 'jar'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+mainClassName = 'net.talpidae.viceroy.ViceroyApplication'
+manifest {
+    attributes 'Main-Class': mainClassName
+}
+
+repositories {
+    mavenLocal()
+    jcenter()
+    mavenCentral()
+}
+
+// exclude javax.xml.parsers
+task printClasspath {
+    doLast {
+        configurations.testRuntime.each { println it }
+    }
+}
+
+dependencies {
+    compileOnly "org.projectlombok:lombok:1.16.14"
+
+    compile 'net.talpidae:base:1'  // or modules/base
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+}
