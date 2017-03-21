@@ -229,7 +229,7 @@ public class InsectProxyClient implements ProxyClient
         /**
          * Get or create connection pool for this target service on-demand.
          */
-        public ProxyConnectionPool getConnectionPool()
+        ProxyConnectionPool getConnectionPool()
         {
             if (connectionPool == null)
             {
@@ -297,11 +297,11 @@ public class InsectProxyClient implements ProxyClient
     @AllArgsConstructor
     private class ConnectionProxyCallbackWrapper implements ProxyCallback<ProxyConnection>
     {
-        private TargetServiceState serviceState;
+        private final TargetServiceState serviceState;
 
-        private ConnectionHolder connectionHolder;
+        private final ConnectionHolder connectionHolder;
 
-        private ProxyCallback<ProxyConnection> callback;
+        private final ProxyCallback<ProxyConnection> callback;
 
         @Override
         public void completed(HttpServerExchange exchange, ProxyConnection result)
