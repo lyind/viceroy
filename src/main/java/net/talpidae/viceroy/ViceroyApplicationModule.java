@@ -32,10 +32,6 @@ import net.talpidae.base.insect.config.SlaveSettings;
 import net.talpidae.base.server.DefaultServerConfig;
 import net.talpidae.base.server.ServerConfig;
 import net.talpidae.base.util.Application;
-import net.talpidae.base.util.auth.Authenticator;
-import net.talpidae.base.util.session.SessionService;
-import net.talpidae.centipede.util.auth.LocalAuthenticator;
-import net.talpidae.centipede.util.session.LocalSessionService;
 
 
 @Slf4j
@@ -43,24 +39,21 @@ public class ViceroyApplicationModule extends AbstractModule
 {
     public static void main(String[] args)
     {
-        Base.initializeApp(args, new CentipedeApplicationModule()).run();
+        Base.initializeApp(args, new ViceroyApplicationModule()).run();
     }
 
 
     @Override
     protected void configure()
     {
-        bind(Application.class).to(CentipedeApplication.class);
-
-        bind(QueenSettings.class).to(DefaultQueenSettings.class);
-        bind(Queen.class).to(AsyncQueen.class);
+        bind(Application.class).to(ViceroyApplication.class);
 
         bind(SlaveSettings.class).to(DefaultSlaveSettings.class);
-        bind(Slave.class).to(SyncSlave.class);  // we don't use it
+        bind(Slave.class).to(SyncSlave.class);
+
+        bind(QueenSettings.class).to(DefaultQueenSettings.class);
+        bind(Queen.class).to(AsyncQueen.class);  // we don't actually use it
 
         bind(ServerConfig.class).to(DefaultServerConfig.class);
-
-        bind(Authenticator.class).to(LocalAuthenticator.class);
-        bind(SessionService.class).to(LocalSessionService.class);
     }
 }

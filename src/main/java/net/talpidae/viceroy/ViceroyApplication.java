@@ -15,26 +15,23 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package net.talpidae.centipede;
+package net.talpidae.viceroy;
 
 import com.google.inject.Singleton;
 import io.undertow.server.handlers.CanonicalPathHandler;
 import io.undertow.server.handlers.ResponseCodeHandler;
-import io.undertow.server.handlers.proxy.LoadBalancingProxyClient;
 import io.undertow.server.handlers.proxy.ProxyHandler;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
-import net.talpidae.base.insect.Queen;
 import net.talpidae.base.insect.Slave;
-import net.talpidae.base.insect.config.QueenSettings;
 import net.talpidae.base.insect.config.SlaveSettings;
 import net.talpidae.base.server.Server;
 import net.talpidae.base.server.ServerConfig;
 import net.talpidae.base.util.Application;
+import net.talpidae.viceroy.proxy.InsectProxyClient;
 
 import javax.inject.Inject;
 import javax.servlet.ServletException;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
@@ -54,14 +51,17 @@ public class ViceroyApplication implements Application
 
     private final Slave slave;
 
+    private final InsectProxyClient proxyClient;
+
 
     @Inject
-    public ViceroyApplication(ServerConfig serverConfig, Server server, SlaveSettings slaveSettings, Slave slave)
+    public ViceroyApplication(ServerConfig serverConfig, Server server, SlaveSettings slaveSettings, Slave slave, InsectProxyClient proxyClient)
     {
         this.serverConfig = serverConfig;
         this.server = server;
         this.slaveSettings = slaveSettings;
         this.slave = slave;
+        this.proxyClient = proxyClient;
     }
 
 
@@ -71,9 +71,12 @@ public class ViceroyApplication implements Application
         // disable jersey framework (we are just a proxy, for now)
         serverConfig.setJerseyResourcePackages(new String[0]);
 
-        val proxyHandler = new CanonicalPathHandler(new ProxyHandler(loadBalancer, 30000, ResponseCodeHandler.HANDLE_404));
+        val proxyHandler = new CanonicalPathHandler(new ProxyHandler(proxyClient, 30000, ResponseCodeHandler.HANDLE_404));
         serverConfig.getAdditionalHandlers().add(proxyHandler);
-        serverConfig.setPort(443);  // TODO make this configurable via command line (--server.port)
+
+        // TODO Config SSL certs
+        // TODO Make this configurable via command line (--server.port)
+        serverConfig.setPort(443);
 
         try
         {
