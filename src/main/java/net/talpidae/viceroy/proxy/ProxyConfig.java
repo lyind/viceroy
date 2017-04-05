@@ -58,7 +58,7 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
      * Maximum time to live for connections above the limit of connectionsPerThread.
      */
     @Setter
-    private int ttl = 60 * 1000; // 60s, possibly set to -1
+    private long ttl = 60 * 1000; // 60s, possibly set to -1
 
 
     @Inject
