@@ -103,14 +103,14 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
     /**
      * Locate a route by a request path prefix.
      */
-    public RouteMatch findRouteByPathPrefix(String prefix)
+    public RouteMatch findRouteByPathPrefix(String path)
     {
         val mappings = pathPrefixToRoute;
         if (mappings != null)
         {
-            val entry = mappings.ceilingEntry(prefix);
+            val entry = mappings.floorEntry(path);
 
-            if (entry != null && entry.getKey().startsWith(prefix))
+            if (entry != null && path.startsWith(entry.getKey()))
             {
                 return entry.getValue();
             }
