@@ -27,7 +27,6 @@ import io.undertow.util.AttachmentList;
 import io.undertow.util.Headers;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.experimental.var;
 import lombok.val;
 import net.talpidae.base.insect.Slave;
 import net.talpidae.base.insect.state.ServiceState;
@@ -144,7 +143,7 @@ public class InsectProxyClient implements ProxyClient
 
         // if we want a sort by timestamp we need to iterate over all services for this route anyways,
         // doing that in the loop below would just add more lookups for the ConnectionPool instances
-        var sortedServices = new ArrayList<ServiceState>();
+        val sortedServices = new ArrayList<ServiceState>();
         do
         {
             sortedServices.add(services.next());
