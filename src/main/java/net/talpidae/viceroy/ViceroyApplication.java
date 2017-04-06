@@ -86,7 +86,7 @@ public class ViceroyApplication implements Application
             log.info("server started on {}", bindAddress.toString());
 
             slaveSettings.setBindAddress(bindAddress);
-            slaveSettings.setRoute("viceroy");
+            slaveSettings.setRoute(ViceroyApplication.class.getName());
             try
             {
                 slave.run();

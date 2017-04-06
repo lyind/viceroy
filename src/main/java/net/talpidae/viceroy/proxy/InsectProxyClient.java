@@ -84,6 +84,18 @@ public class InsectProxyClient implements ProxyClient
         return config.findRouteByPathPrefix(exchange.getRelativePath());
     }
 
+
+    private static String stripPrefix(String s, String prefix)
+    {
+        if (s.startsWith(prefix))
+        {
+            return s.substring(prefix.length());
+        }
+
+        return s;
+    }
+
+
     @Override
     public void getConnection(ProxyTarget target, HttpServerExchange exchange, ProxyCallback<ProxyConnection> callback, long timeout, TimeUnit timeUnit)
     {
@@ -111,6 +123,9 @@ public class InsectProxyClient implements ProxyClient
                 {
                     exchange.addToAttachmentList(TRIED_SERVICES, selectedService.getSocketAddress());
 
+                    // rewrite exchange path (remove prefix)
+                    exchange.setRequestURI(stripPrefix(exchange.getRequestURI(), routeMatch.getPrefix()));
+
                     val connectionPool = selectedService.getConnectionPool();
                     if (connectionHolder != null || exclusivityChecker.isExclusivityRequired(exchange))
                     {
@@ -121,6 +136,9 @@ public class InsectProxyClient implements ProxyClient
                     {
                         connectionPool.connect(target, exchange, callback, timeout, timeUnit, false);
                     }
+
+                    // successfully forwarded connection
+                    return;
                 }
             }
             catch (InterruptedException e)

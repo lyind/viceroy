@@ -33,7 +33,7 @@ task printClasspath {
 }
 
 dependencies {
-    compileOnly "org.projectlombok:lombok:1.16.14"
+    compileOnly "org.projectlombok:lombok:1.16.16"
 
     compile 'net.talpidae:base:1'  // or modules/base
     testCompile group: 'junit', name: 'junit', version: '4.11'
