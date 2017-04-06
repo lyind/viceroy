@@ -133,7 +133,7 @@ public class InsectProxyClient implements ProxyClient
     }
 
 
-    private TargetServiceState chooseService(Iterator<ServiceState> services, HttpServerExchange exchange)
+    private TargetServiceState chooseService(Iterator<? extends ServiceState> services, HttpServerExchange exchange)
     {
         val attemptedServices = exchange.getAttachment(TRIED_SERVICES);
         if (services == null || !services.hasNext())
