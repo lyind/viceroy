@@ -29,7 +29,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.val;
 import net.talpidae.base.insect.Slave;
-import net.talpidae.base.insect.config.SlaveSettings;
 import net.talpidae.base.insect.state.ServiceState;
 import org.xnio.OptionMap;
 
@@ -37,10 +36,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -72,17 +68,12 @@ public class InsectProxyClient implements ProxyClient
 
     private final ConcurrentHashMap<InetSocketAddress, ProxyConnectionPool> serviceToConnectionPool = new ConcurrentHashMap<>();
 
-    private final long pulseDelayCutoff;
-
-    private final SomewhatRandom somewhatRandom = new SomewhatRandom();
-
 
     @Inject
-    public InsectProxyClient(Slave slave, SlaveSettings slaveSettings, ProxyConfig proxyConfig)
+    public InsectProxyClient(Slave slave, ProxyConfig proxyConfig)
     {
         this.slave = slave;
         this.config = proxyConfig;
-        this.pulseDelayCutoff = slaveSettings.getPulseDelay() + (slaveSettings.getPulseDelay() >>> 1);
     }
 
     private static String stripPrefix(String s, String prefix)
@@ -101,49 +92,6 @@ public class InsectProxyClient implements ProxyClient
         return config.findRouteByPathPrefix(exchange.getRelativePath());
     }
 
-    private List<ServiceState> snapshotServices(String route, long timeoutMillies) throws InterruptedException
-    {
-        // filter intermittent empty results
-        while (true)
-        {
-            val servicesView = slave.findServices(route, timeoutMillies);
-            if (servicesView == null)
-            {
-                return null;
-            }
-
-            // if we want a sort by timestamp we need to iterate over all services for this route anyways,
-            // doing that in the loop below would just add more lookups for the ConnectionPool instances
-            val services = new ArrayList<ServiceState>(servicesView.size());
-            long timestampCutOff = 0;
-            for (val candidate : servicesView)
-            {
-                // only search up to pulseDelay*2 milliseconds from the youngest ServiceState
-                if (timestampCutOff == 0)
-                {
-                    timestampCutOff = candidate.getTimestamp() - pulseDelayCutoff;
-                }
-                else if (candidate.getTimestamp() < timestampCutOff)
-                {
-                    // skip this one, too old
-                    continue;
-                }
-
-                services.add(candidate);
-            }
-
-            // the service that most recently contacted us is preferred
-            Collections.shuffle(services, somewhatRandom);
-
-            if (!services.isEmpty())
-            {
-                // need to check here as the initial CollectionView may change while we accessed it
-                return services;
-            }
-
-            // ask again (rare edge case, handle timeout here?)
-        }
-    }
 
     @Override
     public void getConnection(ProxyTarget target, HttpServerExchange exchange, ProxyCallback<ProxyConnection> callback, long timeout, TimeUnit timeUnit)
@@ -161,7 +109,8 @@ public class InsectProxyClient implements ProxyClient
                     return;
                 }
 
-                val selectedService = chooseService(snapshotServices(routeMatch.getRoute(), timeUnit.toMillis(timeout)), exchange);
+                val services = slave.findServices(routeMatch.getRoute(), timeUnit.toMillis(timeout));
+                val selectedService = chooseService(services, exchange);
                 if (selectedService == null)
                 {
                     callback.couldNotResolveBackend(exchange);
@@ -197,7 +146,7 @@ public class InsectProxyClient implements ProxyClient
         callback.couldNotResolveBackend(exchange);
     }
 
-    private TargetServiceState chooseService(List<? extends ServiceState> services, HttpServerExchange exchange)
+    private TargetServiceState chooseService(Collection<? extends ServiceState> services, HttpServerExchange exchange)
     {
         if (services != null)
         {
@@ -254,23 +203,6 @@ public class InsectProxyClient implements ProxyClient
             {
                 safeClose(clientConnection);
             }
-        }
-    }
-
-
-    private static class SomewhatRandom extends Random
-    {
-        private volatile int unsafeCounter = 0;
-
-        SomewhatRandom()
-        {
-            super(0);
-        }
-
-        @Override
-        public int nextInt(int limit)
-        {
-            return (++unsafeCounter) % limit;
         }
     }
 
