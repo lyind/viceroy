@@ -29,6 +29,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.val;
 import net.talpidae.base.insect.Slave;
+import net.talpidae.base.insect.config.SlaveSettings;
 import net.talpidae.base.insect.state.ServiceState;
 import org.xnio.OptionMap;
 
@@ -37,8 +38,9 @@ import javax.inject.Singleton;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -70,20 +72,18 @@ public class InsectProxyClient implements ProxyClient
 
     private final ConcurrentHashMap<InetSocketAddress, ProxyConnectionPool> serviceToConnectionPool = new ConcurrentHashMap<>();
 
+    private final long pulseDelayCutoff;
+
+    private final SomewhatRandom somewhatRandom = new SomewhatRandom();
+
 
     @Inject
-    public InsectProxyClient(Slave slave, ProxyConfig proxyConfig)
+    public InsectProxyClient(Slave slave, SlaveSettings slaveSettings, ProxyConfig proxyConfig)
     {
         this.slave = slave;
         this.config = proxyConfig;
+        this.pulseDelayCutoff = slaveSettings.getPulseDelay() + (slaveSettings.getPulseDelay() >>> 1);
     }
-
-    @Override
-    public ProxyTarget findTarget(HttpServerExchange exchange)
-    {
-        return config.findRouteByPathPrefix(exchange.getRelativePath());
-    }
-
 
     private static String stripPrefix(String s, String prefix)
     {
@@ -95,6 +95,55 @@ public class InsectProxyClient implements ProxyClient
         return s;
     }
 
+    @Override
+    public ProxyTarget findTarget(HttpServerExchange exchange)
+    {
+        return config.findRouteByPathPrefix(exchange.getRelativePath());
+    }
+
+    private List<ServiceState> snapshotServices(String route, long timeoutMillies) throws InterruptedException
+    {
+        // filter intermittent empty results
+        while (true)
+        {
+            val servicesView = slave.findServices(route, timeoutMillies);
+            if (servicesView == null)
+            {
+                return null;
+            }
+
+            // if we want a sort by timestamp we need to iterate over all services for this route anyways,
+            // doing that in the loop below would just add more lookups for the ConnectionPool instances
+            val services = new ArrayList<ServiceState>(servicesView.size());
+            long timestampCutOff = 0;
+            for (val candidate : servicesView)
+            {
+                // only search up to pulseDelay*2 milliseconds from the youngest ServiceState
+                if (timestampCutOff == 0)
+                {
+                    timestampCutOff = candidate.getTimestamp() - pulseDelayCutoff;
+                }
+                else if (candidate.getTimestamp() < timestampCutOff)
+                {
+                    // skip this one, too old
+                    continue;
+                }
+
+                services.add(candidate);
+            }
+
+            // the service that most recently contacted us is preferred
+            Collections.shuffle(services, somewhatRandom);
+
+            if (!services.isEmpty())
+            {
+                // need to check here as the initial CollectionView may change while we accessed it
+                return services;
+            }
+
+            // ask again (rare edge case, handle timeout here?)
+        }
+    }
 
     @Override
     public void getConnection(ProxyTarget target, HttpServerExchange exchange, ProxyCallback<ProxyConnection> callback, long timeout, TimeUnit timeUnit)
@@ -104,8 +153,6 @@ public class InsectProxyClient implements ProxyClient
             val routeMatch = (RouteMatch) target;
             try
             {
-                val serviceIterator = slave.findServices(routeMatch.getRoute(), timeUnit.toMillis(timeout));
-
                 val connectionHolder = exchange.getConnection().getAttachment(connectionKey);
                 if (connectionHolder != null && connectionHolder.connection.getConnection().isOpen())
                 {
@@ -114,7 +161,7 @@ public class InsectProxyClient implements ProxyClient
                     return;
                 }
 
-                val selectedService = chooseService(serviceIterator, exchange);
+                val selectedService = chooseService(snapshotServices(routeMatch.getRoute(), timeUnit.toMillis(timeout)), exchange);
                 if (selectedService == null)
                 {
                     callback.couldNotResolveBackend(exchange);
@@ -150,57 +197,43 @@ public class InsectProxyClient implements ProxyClient
         callback.couldNotResolveBackend(exchange);
     }
 
-
-    private TargetServiceState chooseService(Iterator<? extends ServiceState> services, HttpServerExchange exchange)
+    private TargetServiceState chooseService(List<? extends ServiceState> services, HttpServerExchange exchange)
     {
-        val attemptedServices = exchange.getAttachment(TRIED_SERVICES);
-        if (services == null || !services.hasNext())
+        if (services != null)
         {
-            return null;
-        }
+            TargetServiceState candidateFull = null;   // host reached connection limit, still possible
+            TargetServiceState candidateIssues = null; // host got issues before, may be usable now
 
-        // if we want a sort by timestamp we need to iterate over all services for this route anyways,
-        // doing that in the loop below would just add more lookups for the ConnectionPool instances
-        val sortedServices = new ArrayList<ServiceState>();
-        do
-        {
-            sortedServices.add(services.next());
-        }
-        while (services.hasNext());
-
-        // the service that most recently contacted us is preferred
-        sortedServices.sort(Comparator.comparingLong(ServiceState::getTimestamp).reversed());
-
-        TargetServiceState candidateFull = null;   // host reached connection limit, still possible
-        TargetServiceState candidateIssues = null; // host got issues before, may be usable now
-        for (val serviceState : sortedServices)
-        {
-            val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
-            if (attemptedServices == null || !attemptedServices.contains(serviceState.getSocketAddress()))
+            val attemptedServices = exchange.getAttachment(TRIED_SERVICES);
+            for (val serviceState : services)
             {
-                val availability = service.getConnectionPool().available();
-                if (availability == AVAILABLE)
+                val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
+                if (attemptedServices == null || !attemptedServices.contains(serviceState.getSocketAddress()))
                 {
-                    return service;
-                }
-                else if (candidateFull == null && availability == FULL)
-                {
-                    candidateFull = service;
-                }
-                else if (candidateIssues == null && (availability == PROBLEM || availability == FULL_QUEUE))
-                {
-                    candidateIssues = service;
+                    val availability = service.getConnectionPool().available();
+                    if (availability == AVAILABLE)
+                    {
+                        return service;
+                    }
+                    else if (candidateFull == null && availability == FULL)
+                    {
+                        candidateFull = service;
+                    }
+                    else if (candidateIssues == null && (availability == PROBLEM || availability == FULL_QUEUE))
+                    {
+                        candidateIssues = service;
+                    }
                 }
             }
-        }
 
-        if (candidateFull != null)
-        {
-            return candidateFull;
-        }
-        else if (candidateIssues != null)
-        {
-            return candidateIssues;
+            if (candidateFull != null)
+            {
+                return candidateFull;
+            }
+            else if (candidateIssues != null)
+            {
+                return candidateIssues;
+            }
         }
 
         return null;
@@ -221,6 +254,23 @@ public class InsectProxyClient implements ProxyClient
             {
                 safeClose(clientConnection);
             }
+        }
+    }
+
+
+    private static class SomewhatRandom extends Random
+    {
+        private volatile int unsafeCounter = 0;
+
+        SomewhatRandom()
+        {
+            super(0);
+        }
+
+        @Override
+        public int nextInt(int limit)
+        {
+            return (++unsafeCounter) % limit;
         }
     }
 
