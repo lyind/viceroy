@@ -71,12 +71,15 @@ public class ViceroyApplication implements Application
         // disable jersey framework (we are just a proxy, for now)
         serverConfig.setJerseyResourcePackages(new String[0]);
 
-        val proxyHandler = new CanonicalPathHandler(new ProxyHandler(proxyClient, 30000, ResponseCodeHandler.HANDLE_404));
-        serverConfig.getAdditionalHandlers().add(proxyHandler);
+        // proxying is all we do
+        serverConfig.setRootHandlerWrapper(handler -> new CanonicalPathHandler(new ProxyHandler(proxyClient, 30000, ResponseCodeHandler.HANDLE_404)));
 
         // TODO Config SSL certs
         // TODO Make this configurable via command line (--server.port)
         serverConfig.setPort(443);
+
+        // make sure we don't accept X-Forwarded-For and such headers
+        serverConfig.setBehindProxy(false);
 
         try
         {
