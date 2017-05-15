@@ -75,8 +75,6 @@ public class ViceroyApplication implements Application
         serverConfig.setRootHandlerWrapper(handler -> new CanonicalPathHandler(new ProxyHandler(proxyClient, 30000, ResponseCodeHandler.HANDLE_404)));
 
         // TODO Config SSL certs
-        // TODO Make this configurable via command line (--server.port)
-        serverConfig.setPort(443);
 
         // make sure we don't accept X-Forwarded-For and such headers
         serverConfig.setBehindProxy(false);

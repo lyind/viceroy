@@ -39,6 +39,8 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
      */
     private final NavigableMap<String, RouteMatch> pathPrefixToRoute = new TreeMap<>();
 
+    private final RouteMatch defaultRoute;
+
     @Setter
     private int problemServerRetry = 15;
 
@@ -75,7 +77,7 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
             {
                 val prefix = mapParts[0];
                 val route = mapParts[1];
-                if (!Strings.isNullOrEmpty(prefix) && !Strings.isNullOrEmpty(route))
+                if (prefix != null && !Strings.isNullOrEmpty(route))
                 {
                     pathPrefixToRoute.put(prefix, new RouteMatch(prefix, route));
                     continue;
@@ -88,6 +90,8 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
 
             throw new IllegalArgumentException("invalid PREFIX=ROUTE mapping specified: " + map);
         }
+
+        defaultRoute = pathPrefixToRoute.get("");
     }
 
 
@@ -113,6 +117,10 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
             if (entry != null && path.startsWith(entry.getKey()))
             {
                 return entry.getValue();
+            }
+            else if (defaultRoute != null)
+            {
+                return defaultRoute;
             }
         }
 
