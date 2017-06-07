@@ -80,7 +80,9 @@ public class InsectProxyClient implements ProxyClient
     {
         if (s.startsWith(prefix))
         {
-            return s.substring(prefix.length());
+            val stripped = s.substring(prefix.length());
+
+            return (prefix.endsWith("/")) ? "/" + stripped : stripped;
         }
 
         return s;
