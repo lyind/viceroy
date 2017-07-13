@@ -14,7 +14,7 @@ sourceCompatibility = 1.8
 targetCompatibility = 1.8
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 
-mainClassName = 'net.talpidae.viceroy.ViceroyApplication'
+mainClassName = 'net.talpidae.viceroy.ViceroyApplicationModule'
 manifest {
     attributes 'Main-Class': mainClassName
 }
