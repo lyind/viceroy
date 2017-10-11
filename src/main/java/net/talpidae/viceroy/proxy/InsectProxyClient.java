@@ -18,6 +18,7 @@
 package net.talpidae.viceroy.proxy;
 
 import io.undertow.UndertowLogger;
+import io.undertow.UndertowOptions;
 import io.undertow.client.UndertowClient;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.server.ServerConnection;
@@ -41,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import static io.undertow.server.handlers.proxy.ProxyConnectionPool.AvailabilityType.*;
+import static io.undertow.util.Protocols.HTTP_2_0;
 import static org.xnio.IoUtils.safeClose;
 
 
@@ -52,14 +54,15 @@ public class InsectProxyClient implements ProxyClient
 {
     private static final AttachmentKey<AttachmentList<InetSocketAddress>> TRIED_SERVICES = AttachmentKey.createList(InetSocketAddress.class);
 
+    // we set upgraded HTTP(S) connections aside
+    private static final ExclusivityChecker EXCLUSIVITY_CHECKER = exchange ->
+            HTTP_2_0.equals(exchange.getProtocol()) || exchange.getRequestHeaders().contains(Headers.UPGRADE);
+
     @Getter
     private final Slave slave;
 
     @Getter
     private final ProxyConfig config;
-
-    // we set upgraded HTTP(S) connections aside
-    private final ExclusivityChecker exclusivityChecker = exchange -> exchange.getRequestHeaders().contains(Headers.UPGRADE);
 
     // associates a ProxyConnection with the HttpServerExchange
     private final AttachmentKey<ConnectionHolder> connectionKey = AttachmentKey.create(ConnectionHolder.class);
@@ -104,9 +107,11 @@ public class InsectProxyClient implements ProxyClient
             try
             {
                 val connectionHolder = exchange.getConnection().getAttachment(connectionKey);
-                if (connectionHolder != null && connectionHolder.connection.getConnection().isOpen())
+                if (connectionHolder != null
+                        && connectionHolder.route.equals(routeMatch.getRoute())
+                        && connectionHolder.connection.getConnection().isOpen())
                 {
-                    // we already got a connection, use it
+                    // we already got a connection on the correct route, use it
                     callback.completed(exchange, connectionHolder.connection);
                     return;
                 }
@@ -125,9 +130,9 @@ public class InsectProxyClient implements ProxyClient
                     exchange.setRequestURI(stripPrefix(exchange.getRequestURI(), routeMatch.getPrefix()));
 
                     val connectionPool = selectedService.getConnectionPool();
-                    if (connectionHolder != null || exclusivityChecker.isExclusivityRequired(exchange))
+                    if (connectionHolder != null || EXCLUSIVITY_CHECKER.isExclusivityRequired(exchange))
                     {
-                        val proxyCallbackWrapper = new ConnectionProxyCallbackWrapper(selectedService, connectionHolder, callback);
+                        val proxyCallbackWrapper = new ConnectionProxyCallbackWrapper(selectedService, connectionHolder, callback, routeMatch.getRoute());
                         connectionPool.connect(target, exchange, proxyCallbackWrapper, timeout, timeUnit, true);
                     }
                     else
@@ -194,6 +199,8 @@ public class InsectProxyClient implements ProxyClient
     @AllArgsConstructor
     private static class ConnectionHolder implements ServerConnection.CloseListener
     {
+        private final String route;
+
         private ProxyConnection connection;
 
 
@@ -237,6 +244,13 @@ public class InsectProxyClient implements ProxyClient
                 connectionPool = serviceToConnectionPool.computeIfAbsent(serviceState.getSocketAddress(), socketAddress ->
                 {
                     val uri = URI.create("http://" + serviceState.getSocketAddress().getHostString() + ":" + serviceState.getSocketAddress().getPort());
+                    val options = OptionMap.builder()
+                            .set(UndertowOptions.BUFFER_PIPELINED_DATA, true)
+                            .set(UndertowOptions.ENABLE_HTTP2, true)
+                            .set(UndertowOptions.HTTP2_SETTINGS_ENABLE_PUSH, false)
+                            .addAll(getOptions())
+                            .getMap();
+
                     return new ProxyConnectionPool(this, uri, client, options);
                 });
             }
@@ -304,6 +318,12 @@ public class InsectProxyClient implements ProxyClient
 
         private final ProxyCallback<ProxyConnection> callback;
 
+        /**
+         * We need the matched route to know when we should NOT re-use a sticky connection (HTTP/2, WebSocket).
+         */
+        private final String route;
+
+
         @Override
         public void completed(HttpServerExchange exchange, ProxyConnection result)
         {
@@ -313,7 +333,7 @@ public class InsectProxyClient implements ProxyClient
             }
             else
             {
-                val connectionHolder = new ConnectionHolder(result);
+                val connectionHolder = new ConnectionHolder(route, result);
                 val connection = exchange.getConnection();
                 connection.putAttachment(connectionKey, connectionHolder);
                 connection.addCloseListener(connectionHolder);
