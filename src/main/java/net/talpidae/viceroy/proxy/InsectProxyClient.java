@@ -51,19 +51,19 @@ import static org.xnio.IoUtils.safeClose;
 @Singleton
 public class InsectProxyClient implements ProxyClient
 {
-    private static final AttachmentKey<AttachmentList<InetSocketAddress>> TRIED_SERVICES = AttachmentKey.createList(InetSocketAddress.class);
+    private static final AttachmentKey<AttachmentList<InetSocketAddress>> TRIED_SERVICES_KEY = AttachmentKey.createList(InetSocketAddress.class);
 
     // we set upgraded HTTP(S) connections aside
     private static final ExclusivityChecker EXCLUSIVITY_CHECKER = exchange -> exchange.getRequestHeaders().contains(Headers.UPGRADE);
+
+    // associates a ProxyConnection with the HttpServerExchange
+    private static final AttachmentKey<ConnectionHolder> CONNECTION_KEY = AttachmentKey.create(ConnectionHolder.class);
 
     @Getter
     private final Slave slave;
 
     @Getter
     private final ProxyConfig config;
-
-    // associates a ProxyConnection with the HttpServerExchange
-    private final AttachmentKey<ConnectionHolder> connectionKey = AttachmentKey.create(ConnectionHolder.class);
 
     private final UndertowClient client = UndertowClient.getInstance();
 
@@ -104,7 +104,7 @@ public class InsectProxyClient implements ProxyClient
             val routeMatch = (RouteMatch) target;
             try
             {
-                val connectionHolder = exchange.getConnection().getAttachment(connectionKey);
+                val connectionHolder = exchange.getConnection().getAttachment(CONNECTION_KEY);
                 if (connectionHolder != null
                         && connectionHolder.route.equals(routeMatch.getRoute())
                         && connectionHolder.connection.getConnection().isOpen())
@@ -116,13 +116,9 @@ public class InsectProxyClient implements ProxyClient
 
                 val services = slave.findServices(routeMatch.getRoute(), timeUnit.toMillis(timeout));
                 val selectedService = chooseService(services, exchange);
-                if (selectedService == null)
+                if (selectedService != null)
                 {
-                    callback.couldNotResolveBackend(exchange);
-                }
-                else
-                {
-                    exchange.addToAttachmentList(TRIED_SERVICES, selectedService.getSocketAddress());
+                    exchange.addToAttachmentList(TRIED_SERVICES_KEY, selectedService.getSocketAddress());
 
                     // rewrite exchange path (remove prefix)
                     exchange.setRequestURI(stripPrefix(exchange.getRequestURI(), routeMatch.getPrefix()));
@@ -151,12 +147,13 @@ public class InsectProxyClient implements ProxyClient
         callback.couldNotResolveBackend(exchange);
     }
 
+
     private TargetServiceState chooseService(Collection<? extends ServiceState> services, HttpServerExchange exchange)
     {
         TargetServiceState candidateFull = null;   // host reached connection limit, still possible
         TargetServiceState candidateIssues = null; // host got issues before, may be usable now
 
-        val attemptedServices = exchange.getAttachment(TRIED_SERVICES);
+        val attemptedServices = exchange.getAttachment(TRIED_SERVICES_KEY);
         for (val serviceState : services)
         {
             val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
@@ -178,16 +175,7 @@ public class InsectProxyClient implements ProxyClient
             }
         }
 
-        if (candidateFull != null)
-        {
-            return candidateFull;
-        }
-        else if (candidateIssues != null)
-        {
-            return candidateIssues;
-        }
-
-        return null;
+        return (candidateFull != null) ? candidateFull : candidateIssues;
     }
 
 
@@ -330,7 +318,7 @@ public class InsectProxyClient implements ProxyClient
             {
                 val connectionHolder = new ConnectionHolder(route, result);
                 val connection = exchange.getConnection();
-                connection.putAttachment(connectionKey, connectionHolder);
+                connection.putAttachment(CONNECTION_KEY, connectionHolder);
                 connection.addCloseListener(connectionHolder);
             }
 
