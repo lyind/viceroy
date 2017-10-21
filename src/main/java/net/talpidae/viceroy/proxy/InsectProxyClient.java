@@ -31,13 +31,14 @@ import lombok.Getter;
 import lombok.val;
 import net.talpidae.base.insect.Slave;
 import net.talpidae.base.insect.state.ServiceState;
+import net.talpidae.base.util.random.AtomicXorShiftRandom;
 import org.xnio.OptionMap;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -58,6 +59,14 @@ public class InsectProxyClient implements ProxyClient
 
     // associates a ProxyConnection with the HttpServerExchange
     private static final AttachmentKey<ConnectionHolder> CONNECTION_KEY = AttachmentKey.create(ConnectionHolder.class);
+
+    private static final AtomicXorShiftRandom CHEAP_RANDOM = new AtomicXorShiftRandom();
+
+    private static final OptionMap DEFAULT_HTTP2_BACKEND_OPTIONS = OptionMap.builder()
+            .set(UndertowOptions.BUFFER_PIPELINED_DATA, true)
+            .set(UndertowOptions.ENABLE_HTTP2, true)
+            .set(UndertowOptions.HTTP2_SETTINGS_ENABLE_PUSH, false)
+            .getMap();
 
     @Getter
     private final Slave slave;
@@ -99,66 +108,66 @@ public class InsectProxyClient implements ProxyClient
     @Override
     public void getConnection(ProxyTarget target, HttpServerExchange exchange, ProxyCallback<ProxyConnection> callback, long timeout, TimeUnit timeUnit)
     {
-        if (target instanceof RouteMatch)
+        val routeMatch = (RouteMatch) target;
+        try
         {
-            val routeMatch = (RouteMatch) target;
-            try
+            val connectionHolder = exchange.getConnection().getAttachment(CONNECTION_KEY);
+            if (connectionHolder != null
+                    && connectionHolder.route.equals(routeMatch.getRoute())
+                    && connectionHolder.connection.getConnection().isOpen())
             {
-                val connectionHolder = exchange.getConnection().getAttachment(CONNECTION_KEY);
-                if (connectionHolder != null
-                        && connectionHolder.route.equals(routeMatch.getRoute())
-                        && connectionHolder.connection.getConnection().isOpen())
+                // we already got a connection on the correct route, use it
+                callback.completed(exchange, connectionHolder.connection);
+                return;
+            }
+
+            val services = slave.findServices(routeMatch.getRoute(), timeUnit.toMillis(timeout));
+            val selectedService = chooseService(services, exchange);
+            if (selectedService != null)
+            {
+                exchange.addToAttachmentList(TRIED_SERVICES_KEY, selectedService.getSocketAddress());
+
+                // rewrite exchange path (remove prefix)
+                exchange.setRequestURI(stripPrefix(exchange.getRequestURI(), routeMatch.getPrefix()));
+
+                val connectionPool = selectedService.getConnectionPool();
+                if (connectionHolder != null || EXCLUSIVITY_CHECKER.isExclusivityRequired(exchange))
                 {
-                    // we already got a connection on the correct route, use it
-                    callback.completed(exchange, connectionHolder.connection);
-                    return;
+                    val proxyCallbackWrapper = new ConnectionProxyCallbackWrapper(selectedService, connectionHolder, callback, routeMatch.getRoute());
+                    connectionPool.connect(target, exchange, proxyCallbackWrapper, timeout, timeUnit, true);
+                }
+                else
+                {
+                    connectionPool.connect(target, exchange, callback, timeout, timeUnit, false);
                 }
 
-                val services = slave.findServices(routeMatch.getRoute(), timeUnit.toMillis(timeout));
-                val selectedService = chooseService(services, exchange);
-                if (selectedService != null)
-                {
-                    exchange.addToAttachmentList(TRIED_SERVICES_KEY, selectedService.getSocketAddress());
-
-                    // rewrite exchange path (remove prefix)
-                    exchange.setRequestURI(stripPrefix(exchange.getRequestURI(), routeMatch.getPrefix()));
-
-                    val connectionPool = selectedService.getConnectionPool();
-                    if (connectionHolder != null || EXCLUSIVITY_CHECKER.isExclusivityRequired(exchange))
-                    {
-                        val proxyCallbackWrapper = new ConnectionProxyCallbackWrapper(selectedService, connectionHolder, callback, routeMatch.getRoute());
-                        connectionPool.connect(target, exchange, proxyCallbackWrapper, timeout, timeUnit, true);
-                    }
-                    else
-                    {
-                        connectionPool.connect(target, exchange, callback, timeout, timeUnit, false);
-                    }
-
-                    // successfully forwarded connection
-                    return;
-                }
+                // successfully forwarded connection
+                return;
             }
-            catch (InterruptedException e)
-            {
-                Thread.currentThread().interrupt();
-            }
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
         }
 
         callback.couldNotResolveBackend(exchange);
     }
 
 
-    private TargetServiceState chooseService(Collection<? extends ServiceState> services, HttpServerExchange exchange)
+    private TargetServiceState chooseService(List<? extends ServiceState> services, HttpServerExchange exchange)
     {
         TargetServiceState candidateFull = null;   // host reached connection limit, still possible
         TargetServiceState candidateIssues = null; // host got issues before, may be usable now
 
         val attemptedServices = exchange.getAttachment(TRIED_SERVICES_KEY);
-        for (val serviceState : services)
+        val size = services.size();
+        val startIndex = CHEAP_RANDOM.nextInt(size);
+        for (int i = 0; i < size; ++i)
         {
-            val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
+            val serviceState = services.get((startIndex + i) % size);
             if (attemptedServices == null || !attemptedServices.contains(serviceState.getSocketAddress()))
             {
+                val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
                 val availability = service.getConnectionPool().available();
                 if (availability == AVAILABLE)
                 {
@@ -227,14 +236,11 @@ public class InsectProxyClient implements ProxyClient
                 connectionPool = serviceToConnectionPool.computeIfAbsent(serviceState.getSocketAddress(), socketAddress ->
                 {
                     val uri = URI.create("http://" + serviceState.getSocketAddress().getHostString() + ":" + serviceState.getSocketAddress().getPort());
-                    val options = OptionMap.builder()
-                            .set(UndertowOptions.BUFFER_PIPELINED_DATA, true)
-                            .set(UndertowOptions.ENABLE_HTTP2, true)
-                            .set(UndertowOptions.HTTP2_SETTINGS_ENABLE_PUSH, false)
-                            .addAll(getOptions())
+                    val optionMap = OptionMap.builder().addAll(DEFAULT_HTTP2_BACKEND_OPTIONS)
+                            .addAll(options)
                             .getMap();
 
-                    return new ProxyConnectionPool(this, uri, client, options);
+                    return new ProxyConnectionPool(this, uri, client, optionMap);
                 });
             }
 
