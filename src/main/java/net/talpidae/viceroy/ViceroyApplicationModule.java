@@ -21,6 +21,8 @@ package net.talpidae.viceroy;
 import com.google.inject.AbstractModule;
 import lombok.extern.slf4j.Slf4j;
 import net.talpidae.base.Base;
+import net.talpidae.base.insect.metrics.MetricsSink;
+import net.talpidae.base.insect.metrics.QueuedMetricsSink;
 import net.talpidae.base.util.Application;
 
 
@@ -37,5 +39,7 @@ public class ViceroyApplicationModule extends AbstractModule
     protected void configure()
     {
         bind(Application.class).to(ViceroyApplication.class);
+
+        bind(MetricsSink.class).to(QueuedMetricsSink.class);
     }
 }
