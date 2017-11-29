@@ -29,6 +29,7 @@ import net.talpidae.base.server.Server;
 import net.talpidae.base.server.ServerConfig;
 import net.talpidae.base.util.Application;
 import net.talpidae.viceroy.proxy.InsectProxyClient;
+import net.talpidae.viceroy.proxy.ProxyConfig;
 
 import javax.inject.Inject;
 import javax.servlet.ServletException;
@@ -53,15 +54,23 @@ public class ViceroyApplication implements Application
 
     private final InsectProxyClient proxyClient;
 
+    private final ProxyConfig proxyConfig;
+
 
     @Inject
-    public ViceroyApplication(ServerConfig serverConfig, Server server, SlaveSettings slaveSettings, Slave slave, InsectProxyClient proxyClient)
+    public ViceroyApplication(ServerConfig serverConfig,
+                              Server server,
+                              SlaveSettings slaveSettings,
+                              Slave slave,
+                              InsectProxyClient proxyClient,
+                              ProxyConfig proxyConfig)
     {
         this.serverConfig = serverConfig;
         this.server = server;
         this.slaveSettings = slaveSettings;
         this.slave = slave;
         this.proxyClient = proxyClient;
+        this.proxyConfig = proxyConfig;
     }
 
 
@@ -72,9 +81,13 @@ public class ViceroyApplication implements Application
         serverConfig.setJerseyResourcePackages(new String[0]);
 
         // proxying is all we do
-        serverConfig.setRootHandlerWrapper(handler -> new CanonicalPathHandler(new ProxyHandler(proxyClient, 30000, ResponseCodeHandler.HANDLE_404)));
+        val proxyHandler = ProxyHandler.builder()
+                .setProxyClient(proxyClient)
+                .setMaxRequestTime(proxyConfig.getMaxRequestTime())
+                .setNext(ResponseCodeHandler.HANDLE_404)
+                .build();
 
-        // TODO Config SSL certs
+        serverConfig.setRootHandlerWrapper(handler -> new CanonicalPathHandler(proxyHandler));
 
         // make sure we don't accept X-Forwarded-For and such headers
         serverConfig.setBehindProxy(false);

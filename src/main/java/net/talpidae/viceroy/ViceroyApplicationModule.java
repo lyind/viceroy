@@ -19,8 +19,11 @@ package net.talpidae.viceroy;
 
 
 import com.google.inject.AbstractModule;
+import com.google.inject.multibindings.OptionalBinder;
 import lombok.extern.slf4j.Slf4j;
 import net.talpidae.base.Base;
+import net.talpidae.base.insect.Slave;
+import net.talpidae.base.insect.SyncSlave;
 import net.talpidae.base.insect.metrics.MetricsSink;
 import net.talpidae.base.insect.metrics.QueuedMetricsSink;
 import net.talpidae.base.util.Application;
@@ -41,5 +44,8 @@ public class ViceroyApplicationModule extends AbstractModule
         bind(Application.class).to(ViceroyApplication.class);
 
         bind(MetricsSink.class).to(QueuedMetricsSink.class);
+
+        // sync slave is enough, since we do not otherwise use the main thread
+        OptionalBinder.newOptionalBinder(binder(), Slave.class).setBinding().to(SyncSlave.class);
     }
 }

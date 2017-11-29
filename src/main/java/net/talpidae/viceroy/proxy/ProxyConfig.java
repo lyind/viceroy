@@ -20,7 +20,6 @@ package net.talpidae.viceroy.proxy;
 import com.google.common.base.Strings;
 import io.undertow.server.handlers.proxy.ProxyConnectionPoolConfig;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.val;
 import net.talpidae.base.util.BaseArguments;
 
@@ -28,6 +27,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.NavigableMap;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
 
 @Singleton
@@ -41,26 +41,22 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
 
     private final RouteMatch defaultRoute;
 
-    @Setter
-    private int problemServerRetry = 15;
+    private final int problemServerRetry;
 
-    @Setter
-    private int maxCachedConnections = 20;
+    private final int maxCachedConnections;
 
-    @Setter
-    private int maxConnections = 20;
+    private final int maxConnections;
 
-    @Setter
-    private int maxQueueSize = 0;
+    private final int maxQueueSize;
 
-    @Setter
-    private int sMaxConnections = 10;
+    private final int sMaxConnections;
+
+    private final int maxRequestTime;
 
     /**
      * Maximum time to live for connections above the limit of connectionsPerThread.
      */
-    @Setter
-    private long ttl = 60 * 1000; // 60s, possibly set to -1
+    private final long ttl; // 60s, possibly set to -1
 
 
     @Inject
@@ -68,6 +64,14 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
     {
         val parser = baseArguments.getOptionParser();
         val mapOption = parser.accepts("viceroy.map").withRequiredArg();
+        val softMaxConnectionsOption = parser.accepts("viceroy.softMaxConnections").withRequiredArg().ofType(Integer.TYPE).defaultsTo(20);
+        val maxConnectionsOption = parser.accepts("viceroy.maxConnections").withRequiredArg().ofType(Integer.TYPE).defaultsTo(200);
+        val maxQueueSizeOption = parser.accepts("viceroy.maxQueueSize").withRequiredArg().ofType(Integer.TYPE).defaultsTo(40);
+        val maxCachedConnectionsOption = parser.accepts("viceroy.maxCachedConnections").withRequiredArg().ofType(Integer.TYPE).defaultsTo(40);
+        val ttlOption = parser.accepts("viceroy.ttl").withRequiredArg().ofType(Long.TYPE).defaultsTo(TimeUnit.SECONDS.toMillis(53));
+        val problemServerRetryOption = parser.accepts("viceroy.problemServerRetry").withRequiredArg().ofType(Integer.TYPE).defaultsTo(2);
+        val maxRequestTimeOption = parser.accepts("viceroy.maxRequestTime").withRequiredArg().ofType(Integer.TYPE).defaultsTo(30000);
+
         val options = baseArguments.parse();
 
         for (val map : options.valuesOf(mapOption))
@@ -92,15 +96,13 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
         }
 
         defaultRoute = pathPrefixToRoute.get("");
-    }
-
-
-    /**
-     * Don't call this while the configuration is in use by the proxy.
-     */
-    public void addPathPrefixToRouteMapping(String prefix, RouteMatch routeMatch)
-    {
-        pathPrefixToRoute.put(prefix, routeMatch);
+        sMaxConnections = softMaxConnectionsOption.value(options);
+        maxConnections = maxConnectionsOption.value(options);
+        maxQueueSize = maxQueueSizeOption.value(options);
+        maxCachedConnections = maxCachedConnectionsOption.value(options);
+        ttl = ttlOption.value(options);
+        problemServerRetry = problemServerRetryOption.value(options);
+        maxRequestTime = maxRequestTimeOption.value(options);
     }
 
 
@@ -118,10 +120,8 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
             {
                 return entry.getValue();
             }
-            else if (defaultRoute != null)
-            {
-                return defaultRoute;
-            }
+
+            return defaultRoute;
         }
 
         return null;
