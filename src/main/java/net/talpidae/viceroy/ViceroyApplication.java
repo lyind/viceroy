@@ -78,7 +78,7 @@ public class ViceroyApplication implements Application
     public void run()
     {
         // disable jersey framework (we are just a proxy, for now)
-        serverConfig.setJerseyResourcePackages(new String[0]);
+        serverConfig.clearJerseyResourcePackages();
 
         // proxying is all we do
         val proxyHandler = ProxyHandler.builder()
