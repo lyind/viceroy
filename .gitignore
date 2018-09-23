@@ -1,5 +1,6 @@
 .gradle
 build/
+*.iml
 
 # Ignore Gradle GUI config
 gradle-app.setting
@@ -22,6 +23,9 @@ build/**
 .idea/**/dbnavigator.xml
 .idea/**/workspace.xml
 .idea/**/tasks.xml
+.idea/compiler.xml
+.idea/misc.xml
+.idea/encodings.xml
 .idea/dictionaries
 
 # Sensitive or high-churn files:

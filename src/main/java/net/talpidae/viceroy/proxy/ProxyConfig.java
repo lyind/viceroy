@@ -18,16 +18,19 @@
 package net.talpidae.viceroy.proxy;
 
 import com.google.common.base.Strings;
-import io.undertow.server.handlers.proxy.ProxyConnectionPoolConfig;
-import lombok.Getter;
-import lombok.val;
+
 import net.talpidae.base.util.BaseArguments;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+
+import io.undertow.server.handlers.proxy.ProxyConnectionPoolConfig;
+import lombok.Getter;
+import lombok.val;
 
 
 @Singleton

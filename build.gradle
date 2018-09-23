@@ -10,8 +10,8 @@ version '1'
 
 defaultTasks 'jar'
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+sourceCompatibility = JavaVersion.VERSION_1_10
+targetCompatibility = JavaVersion.VERSION_1_10
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 
 mainClassName = 'net.talpidae.viceroy.ViceroyApplicationModule'
@@ -39,8 +39,9 @@ shadowJar {
 }
 
 dependencies {
-    compileOnly "org.projectlombok:lombok:1.16.16"
+    annotationProcessor "org.projectlombok:lombok:1.16.22"
+    compileOnly "org.projectlombok:lombok:1.16.22"
 
-    compile 'net.talpidae:base:1'  // or modules/base
+    compile 'net.talpidae:base:2'  // or modules/base
     testCompile group: 'junit', name: 'junit', version: '4.12'
 }

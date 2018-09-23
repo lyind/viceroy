@@ -18,11 +18,7 @@
 package net.talpidae.viceroy;
 
 import com.google.inject.Singleton;
-import io.undertow.server.handlers.CanonicalPathHandler;
-import io.undertow.server.handlers.ResponseCodeHandler;
-import io.undertow.server.handlers.proxy.ProxyHandler;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
+
 import net.talpidae.base.insect.Slave;
 import net.talpidae.base.insect.config.SlaveSettings;
 import net.talpidae.base.server.Server;
@@ -31,10 +27,17 @@ import net.talpidae.base.util.Application;
 import net.talpidae.viceroy.proxy.InsectProxyClient;
 import net.talpidae.viceroy.proxy.ProxyConfig;
 
-import javax.inject.Inject;
-import javax.servlet.ServletException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+
+import javax.inject.Inject;
+import javax.servlet.ServletException;
+
+import io.undertow.server.handlers.CanonicalPathHandler;
+import io.undertow.server.handlers.ResponseCodeHandler;
+import io.undertow.server.handlers.proxy.ProxyHandler;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
 
 import static java.lang.System.exit;
 
@@ -43,7 +46,6 @@ import static java.lang.System.exit;
 @Slf4j
 public class ViceroyApplication implements Application
 {
-
     private final ServerConfig serverConfig;
 
     private final Server server;
@@ -77,10 +79,7 @@ public class ViceroyApplication implements Application
     @Override
     public void run()
     {
-        // disable jersey framework (we are just a proxy, for now)
-        serverConfig.clearJerseyResourcePackages();
-
-        // proxying is all we do
+        // proxy is all we do
         val proxyHandler = ProxyHandler.builder()
                 .setProxyClient(proxyClient)
                 .setMaxRequestTime(proxyConfig.getMaxRequestTime())
@@ -89,7 +88,7 @@ public class ViceroyApplication implements Application
 
         serverConfig.setRootHandlerWrapper(handler -> new CanonicalPathHandler(proxyHandler));
 
-        // make sure we don't accept X-Forwarded-For and such headers
+        // make sure we don't accept headers like X-Forwarded-For
         serverConfig.setBehindProxy(false);
 
         try
