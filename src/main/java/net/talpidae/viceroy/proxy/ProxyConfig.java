@@ -18,19 +18,16 @@
 package net.talpidae.viceroy.proxy;
 
 import com.google.common.base.Strings;
-
-import net.talpidae.base.util.BaseArguments;
-
-import java.util.NavigableMap;
-import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.undertow.server.handlers.proxy.ProxyConnectionPoolConfig;
 import lombok.Getter;
 import lombok.val;
+import net.talpidae.base.util.BaseArguments;
+
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
 
 @Singleton
@@ -56,6 +53,8 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
 
     private final int maxRequestTime;
 
+    private final int maxRetries;
+
     /**
      * Maximum time to live for connections above the limit of connectionsPerThread.
      */
@@ -74,8 +73,11 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
         val ttlOption = parser.accepts("viceroy.ttl").withRequiredArg().ofType(Long.TYPE).defaultsTo(TimeUnit.SECONDS.toMillis(53));
         val problemServerRetryOption = parser.accepts("viceroy.problemServerRetry").withRequiredArg().ofType(Integer.TYPE).defaultsTo(2);
         val maxRequestTimeOption = parser.accepts("viceroy.maxRequestTime").withRequiredArg().ofType(Integer.TYPE).defaultsTo(30000);
+        val maxRetriesTimeOption = parser.accepts("viceroy.maxRetries").withRequiredArg().ofType(Integer.TYPE).defaultsTo(1);
 
         val options = baseArguments.parse();
+
+        maxRetries = options.valueOf(maxRetriesTimeOption);
 
         for (val map : options.valuesOf(mapOption))
         {

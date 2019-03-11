@@ -83,6 +83,7 @@ public class ViceroyApplication implements Application
         val proxyHandler = ProxyHandler.builder()
                 .setProxyClient(proxyClient)
                 .setMaxRequestTime(proxyConfig.getMaxRequestTime())
+                .setMaxConnectionRetries(proxyConfig.getMaxRetries())
                 .setNext(ResponseCodeHandler.HANDLE_404)
                 .build();
 
