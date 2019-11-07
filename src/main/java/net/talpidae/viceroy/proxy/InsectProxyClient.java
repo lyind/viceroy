@@ -22,7 +22,13 @@ import io.undertow.UndertowOptions;
 import io.undertow.client.UndertowClient;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.server.ServerConnection;
-import io.undertow.server.handlers.proxy.*;
+import io.undertow.server.handlers.proxy.ConnectionPoolErrorHandler;
+import io.undertow.server.handlers.proxy.ConnectionPoolManager;
+import io.undertow.server.handlers.proxy.ExclusivityChecker;
+import io.undertow.server.handlers.proxy.ProxyCallback;
+import io.undertow.server.handlers.proxy.ProxyClient;
+import io.undertow.server.handlers.proxy.ProxyConnection;
+import io.undertow.server.handlers.proxy.ProxyConnectionPool;
 import io.undertow.util.AttachmentKey;
 import io.undertow.util.AttachmentList;
 import io.undertow.util.Headers;
@@ -42,7 +48,10 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import static io.undertow.server.handlers.proxy.ProxyConnectionPool.AvailabilityType.*;
+import static io.undertow.server.handlers.proxy.ProxyConnectionPool.AvailabilityType.AVAILABLE;
+import static io.undertow.server.handlers.proxy.ProxyConnectionPool.AvailabilityType.FULL;
+import static io.undertow.server.handlers.proxy.ProxyConnectionPool.AvailabilityType.FULL_QUEUE;
+import static io.undertow.server.handlers.proxy.ProxyConnectionPool.AvailabilityType.PROBLEM;
 import static org.xnio.IoUtils.safeClose;
 
 
@@ -161,25 +170,28 @@ public class InsectProxyClient implements ProxyClient
 
         val attemptedServices = exchange.getAttachment(TRIED_SERVICES_KEY);
         val size = services.size();
-        val startIndex = CHEAP_RANDOM.nextInt(size);
-        for (int i = 0; i < size; ++i)
+        if (size > 0)
         {
-            val serviceState = services.get((startIndex + i) % size);
-            if (attemptedServices == null || !attemptedServices.contains(serviceState.getSocketAddress()))
+            val startIndex = CHEAP_RANDOM.nextInt(size);
+            for (int i = 0; i < size; ++i)
             {
-                val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
-                val availability = service.getConnectionPool().available();
-                if (availability == AVAILABLE)
+                val serviceState = services.get((startIndex + i) % size);
+                if (attemptedServices == null || !attemptedServices.contains(serviceState.getSocketAddress()))
                 {
-                    return service;
-                }
-                else if (candidateFull == null && availability == FULL)
-                {
-                    candidateFull = service;
-                }
-                else if (candidateIssues == null && (availability == PROBLEM || availability == FULL_QUEUE))
-                {
-                    candidateIssues = service;
+                    val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
+                    val availability = service.getConnectionPool().available();
+                    if (availability == AVAILABLE)
+                    {
+                        return service;
+                    }
+                    else if (candidateFull == null && availability == FULL)
+                    {
+                        candidateFull = service;
+                    }
+                    else if (candidateIssues == null && (availability == PROBLEM || availability == FULL_QUEUE))
+                    {
+                        candidateIssues = service;
+                    }
                 }
             }
         }
