@@ -67,7 +67,7 @@ public class InsectProxyClient implements ProxyClient
     private static final ExclusivityChecker EXCLUSIVITY_CHECKER = exchange -> exchange.getRequestHeaders().contains(Headers.UPGRADE);
 
     // associates a ProxyConnection with the HttpServerExchange
-    private static final AttachmentKey<ConnectionHolder> CONNECTION_KEY = AttachmentKey.create(ConnectionHolder.class);
+    private final AttachmentKey<ConnectionHolder> CONNECTION_KEY = AttachmentKey.create(ConnectionHolder.class);
 
     private static final AtomicXorShiftRandom CHEAP_RANDOM = new AtomicXorShiftRandom();
 
