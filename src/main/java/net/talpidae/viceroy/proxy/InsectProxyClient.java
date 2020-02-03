@@ -67,7 +67,7 @@ public class InsectProxyClient implements ProxyClient
     private static final ExclusivityChecker EXCLUSIVITY_CHECKER = exchange -> exchange.getRequestHeaders().contains(Headers.UPGRADE);
 
     // associates a ProxyConnection with the HttpServerExchange
-    private final AttachmentKey<ConnectionHolder> CONNECTION_KEY = AttachmentKey.create(ConnectionHolder.class);
+    private final AttachmentKey<ConnectionHolder> connectionKey = AttachmentKey.create(ConnectionHolder.class);
 
     private static final AtomicXorShiftRandom CHEAP_RANDOM = new AtomicXorShiftRandom();
 
@@ -85,7 +85,7 @@ public class InsectProxyClient implements ProxyClient
 
     private final UndertowClient client = UndertowClient.getInstance();
 
-    private final ConcurrentHashMap<InetSocketAddress, ProxyConnectionPool> serviceToConnectionPool = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<InetSocketAddress, TargetPool> serviceToState = new ConcurrentHashMap<>();
 
 
     @Inject
@@ -120,7 +120,7 @@ public class InsectProxyClient implements ProxyClient
         val routeMatch = (RouteMatch) target;
         try
         {
-            val connectionHolder = exchange.getConnection().getAttachment(CONNECTION_KEY);
+            val connectionHolder = exchange.getConnection().getAttachment(connectionKey);
             if (connectionHolder != null
                     && connectionHolder.route.equals(routeMatch.getRoute())
                     && connectionHolder.connection.getConnection().isOpen())
@@ -163,10 +163,10 @@ public class InsectProxyClient implements ProxyClient
     }
 
 
-    private TargetServiceState chooseService(List<? extends ServiceState> services, HttpServerExchange exchange)
+    private TargetPool chooseService(List<? extends ServiceState> services, HttpServerExchange exchange)
     {
-        TargetServiceState candidateFull = null;   // host reached connection limit, still possible
-        TargetServiceState candidateIssues = null; // host got issues before, may be usable now
+        TargetPool candidateFull = null;   // host reached connection limit, still possible
+        TargetPool candidateIssues = null; // host got issues before, may be usable now
 
         val attemptedServices = exchange.getAttachment(TRIED_SERVICES_KEY);
         val size = services.size();
@@ -178,7 +178,7 @@ public class InsectProxyClient implements ProxyClient
                 val serviceState = services.get((startIndex + i) % size);
                 if (attemptedServices == null || !attemptedServices.contains(serviceState.getSocketAddress()))
                 {
-                    val service = new TargetServiceState(serviceState, OptionMap.EMPTY);
+                    val service = getTargetPool(serviceState.getSocketAddress());
                     val availability = service.getConnectionPool().available();
                     if (availability == AVAILABLE)
                     {
@@ -197,6 +197,12 @@ public class InsectProxyClient implements ProxyClient
         }
 
         return (candidateFull != null) ? candidateFull : candidateIssues;
+    }
+
+
+    private TargetPool getTargetPool(InetSocketAddress targetServiceAddress)
+    {
+        return serviceToState.computeIfAbsent(targetServiceAddress, TargetPool::new);
     }
 
 
@@ -221,44 +227,23 @@ public class InsectProxyClient implements ProxyClient
 
 
     @Getter
-    private class TargetServiceState extends ConnectionPoolErrorHandler.SimpleConnectionPoolErrorHandler implements ConnectionPoolManager, ServiceState
+    private class TargetPool extends ConnectionPoolErrorHandler.SimpleConnectionPoolErrorHandler implements ConnectionPoolManager
     {
-        private final ServiceState serviceState;
+        private final InetSocketAddress socketAddress;
 
-        private final OptionMap options;
-
-        // cache connection pool for performance
-        private ProxyConnectionPool connectionPool;
+        private final ProxyConnectionPool connectionPool;
 
 
-        private TargetServiceState(ServiceState serviceState, OptionMap options)
+        private TargetPool(InetSocketAddress socketAddress)
         {
-            this.serviceState = serviceState;
-            this.options = options;
+            this.socketAddress = socketAddress;
+
+            val uri = URI.create("http://" + socketAddress.getHostString() + ":" + socketAddress.getPort());
+            val optionMap = OptionMap.builder().addAll(DEFAULT_HTTP2_BACKEND_OPTIONS)
+                    .getMap();
+
+            this.connectionPool = new ProxyConnectionPool(this, uri, client, optionMap);
         }
-
-
-        /**
-         * Get or create connection pool for this target service on-demand.
-         */
-        ProxyConnectionPool getConnectionPool()
-        {
-            if (connectionPool == null)
-            {
-                connectionPool = serviceToConnectionPool.computeIfAbsent(serviceState.getSocketAddress(), socketAddress ->
-                {
-                    val uri = URI.create("http://" + serviceState.getSocketAddress().getHostString() + ":" + serviceState.getSocketAddress().getPort());
-                    val optionMap = OptionMap.builder().addAll(DEFAULT_HTTP2_BACKEND_OPTIONS)
-                            .addAll(options)
-                            .getMap();
-
-                    return new ProxyConnectionPool(this, uri, client, optionMap);
-                });
-            }
-
-            return connectionPool;
-        }
-
 
         @Override
         public int getProblemServerRetry()
@@ -295,25 +280,13 @@ public class InsectProxyClient implements ProxyClient
         {
             return config.getMaxQueueSize();
         }
-
-        @Override
-        public long getTimestamp()
-        {
-            return serviceState.getTimestamp();
-        }
-
-        @Override
-        public InetSocketAddress getSocketAddress()
-        {
-            return serviceState.getSocketAddress();
-        }
     }
 
 
     @AllArgsConstructor
     private class ConnectionProxyCallbackWrapper implements ProxyCallback<ProxyConnection>
     {
-        private final TargetServiceState serviceState;
+        private final TargetPool serviceState;
 
         private final ConnectionHolder connectionHolder;
 
@@ -336,7 +309,7 @@ public class InsectProxyClient implements ProxyClient
             {
                 val connectionHolder = new ConnectionHolder(route, result);
                 val connection = exchange.getConnection();
-                connection.putAttachment(CONNECTION_KEY, connectionHolder);
+                connection.putAttachment(connectionKey, connectionHolder);
                 connection.addCloseListener(connectionHolder);
             }
 
