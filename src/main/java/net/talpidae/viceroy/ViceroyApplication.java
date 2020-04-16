@@ -19,15 +19,12 @@ package net.talpidae.viceroy;
 
 import com.google.inject.Singleton;
 
-import net.talpidae.base.insect.Slave;
-import net.talpidae.base.insect.config.SlaveSettings;
 import net.talpidae.base.server.Server;
 import net.talpidae.base.server.ServerConfig;
 import net.talpidae.base.util.Application;
-import net.talpidae.viceroy.proxy.InsectProxyClient;
+import net.talpidae.viceroy.proxy.DnsLookupProxyClient;
 import net.talpidae.viceroy.proxy.ProxyConfig;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
 
 import javax.inject.Inject;
@@ -50,11 +47,7 @@ public class ViceroyApplication implements Application
 
     private final Server server;
 
-    private final SlaveSettings slaveSettings;
-
-    private final Slave slave;
-
-    private final InsectProxyClient proxyClient;
+    private final DnsLookupProxyClient proxyClient;
 
     private final ProxyConfig proxyConfig;
 
@@ -62,15 +55,11 @@ public class ViceroyApplication implements Application
     @Inject
     public ViceroyApplication(ServerConfig serverConfig,
                               Server server,
-                              SlaveSettings slaveSettings,
-                              Slave slave,
-                              InsectProxyClient proxyClient,
+                              DnsLookupProxyClient proxyClient,
                               ProxyConfig proxyConfig)
     {
         this.serverConfig = serverConfig;
         this.server = server;
-        this.slaveSettings = slaveSettings;
-        this.slave = slave;
         this.proxyClient = proxyClient;
         this.proxyConfig = proxyConfig;
     }
@@ -99,25 +88,7 @@ public class ViceroyApplication implements Application
             val bindAddress = new InetSocketAddress(serverConfig.getHost(), serverConfig.getPort());
             log.info("server started on {}", bindAddress.toString());
 
-            slaveSettings.setBindAddress(bindAddress);
-            slaveSettings.setRoute(ViceroyApplication.class.getName());
-            try
-            {
-                slave.run();
-
-                server.waitForShutdown();
-            }
-            finally
-            {
-                try
-                {
-                    slave.close();
-                }
-                catch (IOException e)
-                {
-                    // never happens
-                }
-            }
+            server.waitForShutdown();
         }
         catch (ServletException e)
         {
