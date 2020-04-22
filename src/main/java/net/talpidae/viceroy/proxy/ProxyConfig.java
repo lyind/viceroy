@@ -25,6 +25,7 @@ import net.talpidae.base.util.BaseArguments;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.util.Locale;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -88,7 +89,7 @@ public class ProxyConfig implements ProxyConnectionPoolConfig
                 val route = mapParts[1];
                 if (prefix != null && !Strings.isNullOrEmpty(route))
                 {
-                    pathPrefixToRoute.put(prefix, new RouteMatch(prefix, route));
+                    pathPrefixToRoute.put(prefix, new RouteMatch(prefix, route.toLowerCase(Locale.ROOT)));
                     continue;
                 }
             }
