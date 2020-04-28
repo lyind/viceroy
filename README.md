@@ -35,6 +35,4 @@ with their full path.
 ```
 --server.host 127.0.0.1            # server listen address/name
 --server.port 443                  # listen port
---insect.name [REQUIRED]           # mandatory, unique name to publish to service registry
---insect.slave.remote [REQUIRED]   # address/name and port of the service registry (ie. 127.0.0.1:13300)
 ```
